@@ -6,12 +6,27 @@ use std::{
 
 use crate::io_sync;
 
+#[derive(Clone, Copy)]
+enum Broken {
+    OsErr(i32),
+    DirectErr(ErrorKind),
+}
+
+impl From<Broken> for Error {
+    fn from(value: Broken) -> Self {
+        match value {
+            Broken::OsErr(x) => Error::from_raw_os_error(x),
+            Broken::DirectErr(x) => Error::from(x),
+        }
+    }
+}
+
 pub(crate) struct SocketAdapter {
     pub(crate) internal: TcpStream,
     written: usize,
     to_write: usize,
     write: [u8; 4096],
-    broken: Option<i32>,
+    broken: Option<Broken>,
 }
 
 impl SocketAdapter {
@@ -27,7 +42,7 @@ impl SocketAdapter {
 
     pub fn write_later(&mut self, buf: &[u8]) -> Result<(), Error> {
         if let Some(ref x) = self.broken {
-            return Err(Error::from_raw_os_error(*x));
+            return Err(Error::from(*x));
         }
         let lidx = self.to_write + self.written + buf.len();
         if lidx > self.write.len() && lidx - self.to_write < self.write.len() {
@@ -36,7 +51,7 @@ impl SocketAdapter {
             self.written = 0;
         }
         let Some(x) = self.write.get_mut(self.to_write + self.written..self.to_write + self.written + buf.len()) else {
-            self.broken = Some(Error::from(ErrorKind::TimedOut).raw_os_error().unwrap());
+            self.broken = Some(Broken::DirectErr(ErrorKind::TimedOut));
             return Err(ErrorKind::TimedOut.into());
         };
         x.copy_from_slice(buf);
@@ -47,7 +62,7 @@ impl SocketAdapter {
     pub fn write(&mut self, buf: &[u8]) -> Result<(), Error> {
         self.write_later(buf)?;
         if let Err(x) = self.update() {
-            self.broken = Some(x.raw_os_error().unwrap());
+            self.broken = Some(Broken::OsErr(x.raw_os_error().unwrap()));
             Err(x)
         } else {
             Ok(())
@@ -56,7 +71,7 @@ impl SocketAdapter {
 
     pub fn update(&mut self) -> Result<(), Error> {
         if let Some(ref x) = self.broken {
-            return Err(Error::from_raw_os_error(*x));
+            return Err(Error::from(*x));
         }
         if self.to_write == 0 {
             return Ok(());
@@ -77,7 +92,7 @@ impl SocketAdapter {
                 Ok(())
             }
             Err(x) => {
-                self.broken = Some(x.raw_os_error().unwrap());
+                self.broken = Some(Broken::OsErr(x.raw_os_error().unwrap()));
                 Err(x)
             }
         }
