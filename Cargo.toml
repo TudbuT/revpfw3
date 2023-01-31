@@ -1,7 +1,7 @@
 [package]
 name = "revpfw3"
 repository = "https://github.com/tudbut/revpfw3"
-desciption = "A tool to bypass portforwarding restrictions using some cheap VServer"
+description = "A tool to bypass portforwarding restrictions using some cheap VServer"
 license = "MIT"
 version = "0.1.0"
 edition = "2021"
