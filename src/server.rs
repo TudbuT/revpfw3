@@ -38,10 +38,10 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
     tcp.write_all(&mut ['R' as u8, 'P' as u8, 'F' as u8, 30])
         .unwrap();
 
-    tcp.set_nonblocking(true).unwrap();
     tcpl.set_nonblocking(true).unwrap();
 
-    let mut tcp = SocketAdapter::new(tcp);
+    let mut tcp = SocketAdapter::new(tcp, true);
+    tcp.set_nonblocking(true);
     let mut sockets: Vec<SocketAdapter> = Vec::new();
     let mut last_keep_alive_sent = SystemTime::now();
     let mut last_keep_alive = SystemTime::now();
@@ -57,8 +57,9 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
         }
 
         if let Ok(new) = tcpl.accept() {
-            new.0.set_nonblocking(true).unwrap();
-            sockets.push(SocketAdapter::new(new.0));
+            let mut new = SocketAdapter::new(new.0, false);
+            new.set_nonblocking(true);
+            sockets.push(new);
             tcp.write(&[PacketType::NewClient.ordinal() as u8]).unwrap();
             did_anything = true;
         }
@@ -103,7 +104,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
 
         let pt = PacketType::from_ordinal(buf1[0] as i8)
             .expect("server/client version mismatch or broken TCP");
-        tcp.internal.set_nonblocking(false).unwrap();
+        tcp.set_nonblocking(false);
         match pt {
             PacketType::NewClient => unreachable!(),
 
@@ -131,6 +132,6 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
                 let _ = sockets[idx].write_later(&buf[..len]);
             }
         }
-        tcp.internal.set_nonblocking(true).unwrap();
+        tcp.set_nonblocking(true);
     }
 }

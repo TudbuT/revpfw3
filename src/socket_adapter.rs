@@ -25,19 +25,31 @@ pub(crate) struct SocketAdapter {
     pub(crate) internal: TcpStream,
     written: usize,
     to_write: usize,
-    write: [u8; 1_048_576], // 1MiB
+    write: [u8; 65536],
     broken: Option<Broken>,
+    wait_if_full: bool,
+    is_nonblocking: bool,
 }
 
 impl SocketAdapter {
-    pub fn new(tcp: TcpStream) -> SocketAdapter {
+    pub fn new(tcp: TcpStream, wait_if_full: bool) -> SocketAdapter {
         Self {
             internal: tcp,
             written: 0,
             to_write: 0,
-            write: [0u8; 1_048_576],
+            write: [0u8; 65536],
             broken: None,
+            wait_if_full,
+            is_nonblocking: false,
         }
+    }
+
+    pub fn set_nonblocking(&mut self, nonblocking: bool) {
+        if let Err(x) = self.internal.set_nonblocking(nonblocking) {
+            self.broken = Some(Broken::OsErr(x.raw_os_error().unwrap()));
+            return;
+        }
+        self.is_nonblocking = nonblocking;
     }
 
     pub fn write_later(&mut self, buf: &[u8]) -> Result<(), Error> {
@@ -45,12 +57,21 @@ impl SocketAdapter {
             return Err(Error::from(*x));
         }
         let lidx = self.to_write + self.written + buf.len();
-        if lidx > self.write.len() && lidx - self.to_write < self.write.len() {
+        if lidx > self.write.len() && self.to_write + buf.len() < self.write.len() {
             self.write
                 .copy_within(self.written..self.written + self.to_write, 0);
             self.written = 0;
         }
         let Some(x) = self.write.get_mut(self.to_write + self.written..self.to_write + self.written + buf.len()) else {
+            if self.wait_if_full {
+                self.internal.set_nonblocking(false)?;
+                self.internal.write_all(&self.write[self.written..self.written + self.to_write])?;
+                self.internal.set_nonblocking(self.is_nonblocking)?;
+                self.written = 0;
+                self.to_write = buf.len();
+                self.write[..buf.len()].copy_from_slice(buf);
+                return Ok(());
+            }
             self.broken = Some(Broken::DirectErr(ErrorKind::TimedOut));
             return Err(ErrorKind::TimedOut.into());
         };
@@ -61,12 +82,7 @@ impl SocketAdapter {
 
     pub fn write(&mut self, buf: &[u8]) -> Result<(), Error> {
         self.write_later(buf)?;
-        if let Err(x) = self.update() {
-            self.broken = Some(Broken::OsErr(x.raw_os_error().unwrap()));
-            Err(x)
-        } else {
-            Ok(())
-        }
+        self.update()
     }
 
     pub fn update(&mut self) -> Result<(), Error> {
@@ -76,10 +92,14 @@ impl SocketAdapter {
         if self.to_write == 0 {
             return Ok(());
         }
-        match self
-            .internal
-            .write(&self.write[self.written..self.written + self.to_write])
-        {
+        match {
+            self.internal.set_nonblocking(true)?;
+            let r = self
+                .internal
+                .write(&self.write[self.written..self.written + self.to_write]);
+            self.internal.set_nonblocking(self.is_nonblocking)?;
+            r
+        } {
             Ok(x) => {
                 self.to_write -= x;
                 self.written += x;

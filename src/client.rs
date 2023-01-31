@@ -31,9 +31,8 @@ pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sle
 
     println!("READY!");
 
-    tcp.set_nonblocking(true).unwrap();
-
-    let mut tcp = SocketAdapter::new(tcp);
+    let mut tcp = SocketAdapter::new(tcp, true);
+    tcp.set_nonblocking(true);
     let mut sockets: Vec<SocketAdapter> = Vec::new();
     let mut last_keep_alive = SystemTime::now();
     loop {
@@ -83,12 +82,12 @@ pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sle
 
         let pt = PacketType::from_ordinal(buf1[0] as i8)
             .expect("server/client version mismatch or broken TCP");
-        tcp.internal.set_nonblocking(false).unwrap();
+        tcp.set_nonblocking(false);
         match pt {
             PacketType::NewClient => {
-                let tcp = TcpStream::connect((dest_ip, dest_port)).unwrap();
-                tcp.set_nonblocking(true).unwrap();
-                sockets.push(SocketAdapter::new(tcp));
+                let mut tcp = SocketAdapter::new(TcpStream::connect((dest_ip, dest_port)).unwrap(), false);
+                tcp.set_nonblocking(true);
+                sockets.push(tcp);
             }
 
             PacketType::CloseClient => {
@@ -116,6 +115,6 @@ pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sle
 
             PacketType::ServerData => unreachable!(),
         }
-        tcp.internal.set_nonblocking(true).unwrap();
+        tcp.set_nonblocking(true);
     }
 }
