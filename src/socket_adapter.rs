@@ -25,7 +25,7 @@ pub(crate) struct SocketAdapter {
     pub(crate) internal: TcpStream,
     written: usize,
     to_write: usize,
-    write: [u8; 4096],
+    write: [u8; 1_048_576], // 1MiB
     broken: Option<Broken>,
 }
 
@@ -35,7 +35,7 @@ impl SocketAdapter {
             internal: tcp,
             written: 0,
             to_write: 0,
-            write: [0u8; 4096],
+            write: [0u8; 1_048_576],
             broken: None,
         }
     }
