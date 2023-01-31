@@ -11,11 +11,23 @@ fn main() {
             &args[3],
             args[4].parse().unwrap(),
             &args[5],
-            if args.len() == 7 { args[6].parse().unwrap() } else { 1 }
+            if args.len() == 7 {
+                args[6].parse().unwrap()
+            } else {
+                1
+            },
         );
     }
     if (3..=4).contains(&args.len()) && args[0] == "server" {
-        server(args[1].parse().unwrap(), &args[2], if args.len() == 4 { args[3].parse().unwrap() } else { 1 });
+        server(
+            args[1].parse().unwrap(),
+            &args[2],
+            if args.len() == 4 {
+                args[3].parse().unwrap()
+            } else {
+                1
+            },
+        );
     }
     eprintln!("Usage: \n\
                \x20 revpfw3 server <port> <key> [<poll delay>]\n\

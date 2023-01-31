@@ -108,9 +108,7 @@ impl SocketAdapter {
                 }
                 Ok(())
             }
-            Err(x) if x.kind() == ErrorKind::WouldBlock => {
-                Ok(())
-            }
+            Err(x) if x.kind() == ErrorKind::WouldBlock => Ok(()),
             Err(x) => {
                 self.broken = Some(Broken::OsErr(x.raw_os_error().unwrap()));
                 Err(x)

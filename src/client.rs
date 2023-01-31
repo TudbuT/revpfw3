@@ -85,7 +85,8 @@ pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sle
         tcp.set_nonblocking(false);
         match pt {
             PacketType::NewClient => {
-                let mut tcp = SocketAdapter::new(TcpStream::connect((dest_ip, dest_port)).unwrap(), false);
+                let mut tcp =
+                    SocketAdapter::new(TcpStream::connect((dest_ip, dest_port)).unwrap(), false);
                 tcp.set_nonblocking(true);
                 sockets.push(tcp);
             }
