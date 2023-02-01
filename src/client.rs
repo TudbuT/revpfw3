@@ -12,6 +12,7 @@ use crate::{io_sync, PacketType, SocketAdapter};
 pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sleep_delay_ms: u64) {
     let mut buf1 = [0u8; 1];
     let mut buf4 = [0u8; 4];
+    let mut buf16 = [0u8; 16];
     let mut buf = [0; 1024];
     let mut tcp = TcpStream::connect((ip, port)).unwrap();
     println!("Syncing...");
@@ -31,7 +32,7 @@ pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sle
 
     println!("READY!");
 
-    let mut tcp = SocketAdapter::new(tcp, true);
+    let mut tcp = SocketAdapter::new(tcp);
     tcp.set_nonblocking(true);
     let mut sockets: Vec<SocketAdapter> = Vec::new();
     let mut last_keep_alive = SystemTime::now();
@@ -61,6 +62,12 @@ pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sle
                 to_remove.push(i);
                 did_anything = true;
             }
+            if let x @ 1.. = socket.clear_delay() {
+                tcp.write(&[PacketType::ClientExceededBuffer.ordinal() as u8])
+                    .unwrap();
+                tcp.write(&(i as u32).to_be_bytes()).unwrap();
+                tcp.write(&x.to_be_bytes()).unwrap();
+            }
         }
         for i in to_remove.into_iter().rev() {
             tcp.write(&[PacketType::CloseClient.ordinal() as u8])
@@ -85,8 +92,7 @@ pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sle
         tcp.set_nonblocking(false);
         match pt {
             PacketType::NewClient => {
-                let mut tcp =
-                    SocketAdapter::new(TcpStream::connect((dest_ip, dest_port)).unwrap(), false);
+                let mut tcp = SocketAdapter::new(TcpStream::connect((dest_ip, dest_port)).unwrap());
                 tcp.set_nonblocking(true);
                 sockets.push(tcp);
             }
@@ -115,6 +121,17 @@ pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sle
             }
 
             PacketType::ServerData => unreachable!(),
+
+            PacketType::ClientExceededBuffer => {
+                tcp.internal.read_exact(&mut buf4).unwrap();
+                let idx = u32::from_be_bytes(buf4) as usize;
+                tcp.internal.read_exact(&mut buf16).unwrap();
+                let amount = u128::from_be_bytes(buf16);
+
+                if sockets.len() != 1 { // a single connection doesn't need overuse-penalties
+                    sockets[idx].punish(amount);
+                }
+            }
         }
         tcp.set_nonblocking(true);
     }

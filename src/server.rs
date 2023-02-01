@@ -12,6 +12,7 @@ use crate::{io_sync, PacketType, SocketAdapter};
 pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
     let mut buf1 = [0u8; 1];
     let mut buf4 = [0u8; 4];
+    let mut buf16 = [0u8; 16];
     let mut buf = [0; 1024];
     let tcpl = TcpListener::bind(("0.0.0.0", port)).unwrap();
     let mut tcp = loop {
@@ -40,7 +41,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
 
     tcpl.set_nonblocking(true).unwrap();
 
-    let mut tcp = SocketAdapter::new(tcp, true);
+    let mut tcp = SocketAdapter::new(tcp);
     tcp.set_nonblocking(true);
     let mut sockets: Vec<SocketAdapter> = Vec::new();
     let mut last_keep_alive_sent = SystemTime::now();
@@ -57,7 +58,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
         }
 
         if let Ok(new) = tcpl.accept() {
-            let mut new = SocketAdapter::new(new.0, false);
+            let mut new = SocketAdapter::new(new.0);
             new.set_nonblocking(true);
             sockets.push(new);
             tcp.write(&[PacketType::NewClient.ordinal() as u8]).unwrap();
@@ -82,6 +83,12 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
             } else {
                 to_remove.push(i);
                 did_anything = true;
+            }
+            if let x @ 1.. = socket.clear_delay() {
+                tcp.write(&[PacketType::ClientExceededBuffer.ordinal() as u8])
+                    .unwrap();
+                tcp.write(&(i as u32).to_be_bytes()).unwrap();
+                tcp.write(&x.to_be_bytes()).unwrap();
             }
         }
         for i in to_remove.into_iter().rev() {
@@ -130,6 +137,17 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
                 tcp.internal.read_exact(&mut buf[..len]).unwrap();
 
                 let _ = sockets[idx].write_later(&buf[..len]);
+            }
+
+            PacketType::ClientExceededBuffer => {
+                tcp.internal.read_exact(&mut buf4).unwrap();
+                let idx = u32::from_be_bytes(buf4) as usize;
+                tcp.internal.read_exact(&mut buf16).unwrap();
+                let amount = u128::from_be_bytes(buf16);
+
+                if sockets.len() != 1 { // a single connection doesn't need overuse-penalties
+                    sockets[idx].punish(amount);
+                }
             }
         }
         tcp.set_nonblocking(true);

@@ -7,4 +7,5 @@ pub(crate) enum PacketType {
     KeepAlive,
     ClientData,
     ServerData,
+    ClientExceededBuffer,
 }

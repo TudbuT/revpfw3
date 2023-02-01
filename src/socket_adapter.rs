@@ -2,6 +2,7 @@ use std::{
     io::{Error, Read},
     io::{ErrorKind, Write},
     net::TcpStream,
+    time::SystemTime,
 };
 
 use crate::io_sync;
@@ -9,14 +10,14 @@ use crate::io_sync;
 #[derive(Clone, Copy)]
 enum Broken {
     OsErr(i32),
-    DirectErr(ErrorKind),
+    //DirectErr(ErrorKind),
 }
 
 impl From<Broken> for Error {
     fn from(value: Broken) -> Self {
         match value {
             Broken::OsErr(x) => Error::from_raw_os_error(x),
-            Broken::DirectErr(x) => Error::from(x),
+            //Broken::DirectErr(x) => Error::from(x),
         }
     }
 }
@@ -27,20 +28,22 @@ pub(crate) struct SocketAdapter {
     to_write: usize,
     write: [u8; 65536],
     broken: Option<Broken>,
-    wait_if_full: bool,
+    accumulated_delay: u128,
     is_nonblocking: bool,
+    ignore_until: Option<u128>,
 }
 
 impl SocketAdapter {
-    pub fn new(tcp: TcpStream, wait_if_full: bool) -> SocketAdapter {
+    pub fn new(tcp: TcpStream) -> SocketAdapter {
         Self {
             internal: tcp,
             written: 0,
             to_write: 0,
             write: [0u8; 65536],
             broken: None,
-            wait_if_full,
+            accumulated_delay: 0,
             is_nonblocking: false,
+            ignore_until: None,
         }
     }
 
@@ -63,17 +66,15 @@ impl SocketAdapter {
             self.written = 0;
         }
         let Some(x) = self.write.get_mut(self.to_write + self.written..self.to_write + self.written + buf.len()) else {
-            if self.wait_if_full {
-                self.internal.set_nonblocking(false)?;
-                self.internal.write_all(&self.write[self.written..self.written + self.to_write])?;
-                self.internal.set_nonblocking(self.is_nonblocking)?;
-                self.written = 0;
-                self.to_write = buf.len();
-                self.write[..buf.len()].copy_from_slice(buf);
-                return Ok(());
-            }
-            self.broken = Some(Broken::DirectErr(ErrorKind::TimedOut));
-            return Err(ErrorKind::TimedOut.into());
+            let sa = SystemTime::now();
+            self.internal.set_nonblocking(false)?;
+            self.internal.write_all(&self.write[self.written..self.written + self.to_write])?;
+            self.internal.set_nonblocking(self.is_nonblocking)?;
+            self.written = 0;
+            self.to_write = buf.len();
+            self.write[..buf.len()].copy_from_slice(buf);
+            self.accumulated_delay += sa.elapsed().unwrap().as_millis();
+            return Ok(());
         };
         x.copy_from_slice(buf);
         self.to_write += buf.len();
@@ -86,6 +87,9 @@ impl SocketAdapter {
     }
 
     pub fn update(&mut self) -> Result<(), Error> {
+        if Some(SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis()) < self.ignore_until {
+            return Ok(());
+        }
         if let Some(ref x) = self.broken {
             return Err(Error::from(*x));
         }
@@ -117,7 +121,21 @@ impl SocketAdapter {
     }
 
     pub fn poll(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Error> {
+        if Some(SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis()) < self.ignore_until {
+            return Ok(None);
+        }
         self.update()?;
         io_sync(self.internal.read(buf))
+    }
+
+    pub fn clear_delay(&mut self) -> u128 {
+        (self.accumulated_delay, self.accumulated_delay = 0).0
+    }
+
+    pub fn punish(&mut self, time: u128) {
+        if self.ignore_until == None {
+            self.ignore_until = Some(SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis());
+        }
+        self.ignore_until = self.ignore_until.map(|x| x + time);
     }
 }
