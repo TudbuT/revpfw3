@@ -29,7 +29,7 @@ https://github.com/tudbut/revpfw3`.
    3. Flexible port settings
    4. Not much CPU power
 2. Download revpfw3 to it
-3. Run it like this: `revpfw3 server <port> <key>` (I reocmmend doing it in a
+3. Run it like this: `revpfw3 server <port> <key>` (I recommend doing it in a
    loop)
 4. Download it to your destination as well (your PC, a raspi, etc)
 5. Run it like this: `revpfw3 client <ip of your bridge server> <port> localhost
