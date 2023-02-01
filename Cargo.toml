@@ -3,7 +3,7 @@ name = "revpfw3"
 repository = "https://github.com/tudbut/revpfw3"
 description = "A tool to bypass portforwarding restrictions using some cheap VServer"
 license = "MIT"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
