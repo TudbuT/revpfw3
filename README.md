@@ -25,9 +25,10 @@ https://github.com/tudbut/revpfw3`.
 1. Buy some cheap server online, it will only need
    1. Enough disk space to run a 5MB program (I recommend about .5GB free after
       OS is installed)
-   2. 500MB RAM or more
+   2. 50MB of free RAM or more (if you expect to have many clients connecting, 
+      use more RAM)
    3. Flexible port settings
-   4. Not much CPU power
+   4. Not much CPU power, a single core definitely suffices.
 2. Download revpfw3 to it
 3. Run it like this: `revpfw3 server <port> <key>` (I recommend doing it in a
    loop)
