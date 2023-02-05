@@ -2,7 +2,7 @@ use std::{
     io::{Error, Read},
     io::{ErrorKind, Write},
     net::TcpStream,
-    time::{SystemTime, Duration},
+    time::SystemTime,
 };
 
 use crate::io_sync;
@@ -133,7 +133,7 @@ impl SocketAdapter {
     }
 
     pub fn punish(&mut self, time: u128) {
-        if self.ignore_until == None {
+        if self.ignore_until.is_none() {
             self.ignore_until = Some(SystemTime::UNIX_EPOCH.elapsed().unwrap().as_micros());
         }
         self.ignore_until = self.ignore_until.map(|x| x + time);

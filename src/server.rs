@@ -23,7 +23,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
             tcp.0.shutdown(Shutdown::Both).unwrap();
             continue;
         };
-        if buf4 == ['R' as u8, 'P' as u8, 'F' as u8, 30] {
+        if buf4 == [b'R', b'P', b'F', 30] {
             println!("Compatible client connected.");
             if tcp.0.read_exact(&mut buf4).is_ok() && u32::from_be_bytes(buf4) == key.len() as u32 {
                 println!("Key length matches.");
@@ -38,8 +38,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
         }
     };
 
-    tcp.write_all(&mut ['R' as u8, 'P' as u8, 'F' as u8, 30])
-        .unwrap();
+    tcp.write_all(&[b'R', b'P', b'F', 30]).unwrap();
 
     tcpl.set_nonblocking(true).unwrap();
 

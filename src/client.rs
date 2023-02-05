@@ -1,10 +1,11 @@
 use std::{
+    collections::HashMap,
     io::Read,
     io::Write,
     net::{Shutdown, TcpStream},
     thread,
     time::{Duration, SystemTime},
-    vec, collections::HashMap,
+    vec,
 };
 
 use crate::{io_sync, PacketType, SocketAdapter};
@@ -17,15 +18,14 @@ pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sle
     let mut buf = [0; 1024];
     let mut tcp = TcpStream::connect((ip, port)).unwrap();
     println!("Syncing...");
-    tcp.write_all(&['R' as u8, 'P' as u8, 'F' as u8, 30])
-        .unwrap();
+    tcp.write_all(&[b'R', b'P', b'F', 30]).unwrap();
     println!("Authenticating...");
     tcp.write_all(&(key.len() as u32).to_be_bytes()).unwrap();
     tcp.write_all(key.as_bytes()).unwrap();
 
     println!("Syncing...");
     tcp.read_exact(&mut buf4).unwrap();
-    if buf4 != ['R' as u8, 'P' as u8, 'F' as u8, 30] {
+    if buf4 != [b'R', b'P', b'F', 30] {
         panic!("RPF30 header expected, but not found. Make sure the server is actually running revpfw3!");
     }
     tcp.write_all(&[PacketType::KeepAlive.ordinal() as u8])
