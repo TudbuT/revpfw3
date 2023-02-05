@@ -2,7 +2,7 @@ use std::{
     io::{Error, Read},
     io::{ErrorKind, Write},
     net::TcpStream,
-    time::SystemTime,
+    time::{SystemTime, Duration},
 };
 
 use crate::io_sync;
@@ -73,7 +73,7 @@ impl SocketAdapter {
             self.written = 0;
             self.to_write = buf.len();
             self.write[..buf.len()].copy_from_slice(buf);
-            self.accumulated_delay += sa.elapsed().unwrap().as_millis();
+            self.accumulated_delay += sa.elapsed().unwrap().as_micros();
             return Ok(());
         };
         x.copy_from_slice(buf);
@@ -87,7 +87,7 @@ impl SocketAdapter {
     }
 
     pub fn update(&mut self) -> Result<(), Error> {
-        if Some(SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis()) < self.ignore_until {
+        if Some(SystemTime::UNIX_EPOCH.elapsed().unwrap().as_micros()) < self.ignore_until {
             return Ok(());
         }
         if let Some(ref x) = self.broken {
@@ -121,7 +121,7 @@ impl SocketAdapter {
     }
 
     pub fn poll(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Error> {
-        if Some(SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis()) < self.ignore_until {
+        if Some(SystemTime::UNIX_EPOCH.elapsed().unwrap().as_micros()) < self.ignore_until {
             return Ok(None);
         }
         self.update()?;
@@ -134,7 +134,7 @@ impl SocketAdapter {
 
     pub fn punish(&mut self, time: u128) {
         if self.ignore_until == None {
-            self.ignore_until = Some(SystemTime::UNIX_EPOCH.elapsed().unwrap().as_millis());
+            self.ignore_until = Some(SystemTime::UNIX_EPOCH.elapsed().unwrap().as_micros());
         }
         self.ignore_until = self.ignore_until.map(|x| x + time);
     }

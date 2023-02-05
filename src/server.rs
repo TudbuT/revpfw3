@@ -92,6 +92,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
                     .unwrap();
                 tcp.write(&i.to_be_bytes()).unwrap();
                 tcp.write(&x.to_be_bytes()).unwrap();
+                socket.punish(x);
             }
         }
         for i in to_remove.into_iter().rev() {

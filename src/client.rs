@@ -69,6 +69,7 @@ pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sle
                     .unwrap();
                 tcp.write(&i.to_be_bytes()).unwrap();
                 tcp.write(&x.to_be_bytes()).unwrap();
+                socket.punish(x);
             }
         }
         for i in to_remove.into_iter().rev() {
