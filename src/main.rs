@@ -4,21 +4,18 @@ use revpfw3::{client, server, ClientParams};
 
 fn main() {
     let args: Vec<_> = env::args().skip(1).collect();
-    if (6..=10).contains(&args.len()) && args[0] == "client" {
+    if (6..=11).contains(&args.len()) && args[0] == "client" {
         client(ClientParams {
             server_ip: &args[1],
             server_port: args[2].parse().unwrap(),
             dest_ip: &args[3],
             dest_port: args[4].parse().unwrap(),
             key: &args[5],
-            sleep_delay_ms: if args.len() == 7 {
-                args[6].parse().unwrap()
-            } else {
-                1
-            },
+            sleep_delay_ms: args.get(6).map(|x| x.parse().unwrap()).unwrap_or(1),
             modem_port: args.get(7).map(|x| x.as_str()),
             modem_baud: args.get(8).map(|x| x.parse().unwrap()),
             modem_init: args.get(9).map(|x| x.as_str()),
+            rate_limit_sleep: args.get(10).map(|x| x.parse().unwrap()).unwrap_or(0),
         });
     }
     if (3..=4).contains(&args.len()) && args[0] == "server" {

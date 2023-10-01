@@ -21,6 +21,7 @@ pub struct ClientParams<'a> {
     pub modem_port: Option<&'a str>,
     pub modem_baud: Option<u32>,
     pub modem_init: Option<&'a str>,
+    pub rate_limit_sleep: u64,
 }
 
 fn connect(params: &ClientParams) -> Connection {
@@ -101,6 +102,7 @@ pub fn client(params: ClientParams) {
     let mut id = 0;
     let mut last_keep_alive = SystemTime::now();
     loop {
+        thread::sleep(Duration::from_millis(params.rate_limit_sleep));
         let mut did_anything = false;
 
         if last_keep_alive.elapsed().unwrap().as_secs() >= 60 {
