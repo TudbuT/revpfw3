@@ -10,14 +10,14 @@ use crate::{io_sync, Connection};
 #[derive(Clone, Copy)]
 enum Broken {
     OsErr(i32),
-    //DirectErr(ErrorKind),
+    DirectErr(ErrorKind, &'static str),
 }
 
 impl From<Broken> for Error {
     fn from(value: Broken) -> Self {
         match value {
             Broken::OsErr(x) => Error::from_raw_os_error(x),
-            //Broken::DirectErr(x) => Error::from(x),
+            Broken::DirectErr(x, s) => Error::new(x, s),
         }
     }
 }
@@ -65,10 +65,14 @@ impl SocketAdapter {
                 .copy_within(self.written..self.written + self.to_write, 0);
             self.written = 0;
         }
-        let Some(x) = self.write.get_mut(self.to_write + self.written..self.to_write + self.written + buf.len()) else {
+        let Some(x) = self
+            .write
+            .get_mut(self.to_write + self.written..self.to_write + self.written + buf.len())
+        else {
             let sa = SystemTime::now();
             self.internal.set_nonblocking(false)?;
-            self.internal.write_all(&self.write[self.written..self.written + self.to_write])?;
+            self.internal
+                .write_all(&self.write[self.written..self.written + self.to_write])?;
             self.internal.set_nonblocking(self.is_nonblocking)?;
             self.written = 0;
             self.to_write = buf.len();
@@ -114,7 +118,7 @@ impl SocketAdapter {
             }
             Err(x) if x.kind() == ErrorKind::WouldBlock => Ok(()),
             Err(x) => {
-                self.broken = Some(Broken::OsErr(x.raw_os_error().unwrap()));
+                self.broken = Some(Broken::DirectErr(x.kind(), "io error"));
                 Err(x)
             }
         }
