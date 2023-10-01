@@ -1,7 +1,6 @@
 use std::{
     io::{Error, Read},
     io::{ErrorKind, Write},
-    net::TcpStream,
     time::SystemTime,
 };
 
@@ -101,7 +100,7 @@ impl SocketAdapter {
             return Ok(());
         }
         match {
-            self.internal.set_nonblocking(true)?;
+            self.internal.set_nonblocking(!self.internal.is_serial())?;
             let r = self
                 .internal
                 .write(&self.write[self.written..self.written + self.to_write]);

@@ -16,6 +16,7 @@ pub struct Connection {
     set_nonblocking_thunk: fn(NonNull<()>, bool) -> io::Result<()>,
     close_thunk: fn(NonNull<()>) -> io::Result<()>,
     is_nb: bool,
+    is_serial: bool,
 }
 
 impl Write for Connection {
@@ -23,7 +24,7 @@ impl Write for Connection {
         self.as_write().write_vectored(bufs)
     }
 
-    fn write_all(&mut self, mut buf: &[u8]) -> io::Result<()> {
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
         self.as_write().write_all(buf)
     }
 
@@ -103,6 +104,7 @@ impl Connection {
                 data.cast::<TcpStream>().as_ref().shutdown(Shutdown::Both)
             },
             is_nb: false,
+            is_serial: false,
         }
     }
     pub fn new_serial<T: SerialPort + 'static>(serial: T) -> Self {
@@ -113,7 +115,7 @@ impl Connection {
             set_nonblocking_thunk: |data, nb| unsafe {
                 data.cast::<T>()
                     .as_mut()
-                    .set_timeout(Duration::from_millis(if nb { 1 } else { 10000 }))
+                    .set_timeout(Duration::from_millis(if nb { 0 } else { 600000 }))
                     .map_err(|_| {
                         io::Error::new(io::ErrorKind::ConnectionAborted, "serial port went down")
                     })
@@ -121,6 +123,7 @@ impl Connection {
             // no need to close this.
             close_thunk: |_data| Ok(()),
             is_nb: false,
+            is_serial: true,
         }
     }
     fn as_read(&mut self) -> &mut (dyn Read) {
@@ -129,11 +132,18 @@ impl Connection {
     fn as_write(&mut self) -> &mut (dyn Write) {
         &mut self.readwrite
     }
+    pub fn is_nonblocking(&self) -> bool {
+        self.is_nb
+    }
     pub fn set_nonblocking(&mut self, nonblocking: bool) -> io::Result<()> {
         self.is_nb = nonblocking;
         (self.set_nonblocking_thunk)(self.data, nonblocking)
     }
     pub fn close(&self) -> io::Result<()> {
         (self.close_thunk)(self.data)
+    }
+
+    pub fn is_serial(&self) -> bool {
+        self.is_serial
     }
 }

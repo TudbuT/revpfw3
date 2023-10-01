@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     io::{Read, Write},
-    net::{Shutdown, TcpStream},
+    net::TcpStream,
     thread,
     time::{Duration, SystemTime},
     vec,
@@ -65,7 +65,7 @@ fn connect(params: &ClientParams) -> Connection {
                 );
             }
         }
-        serial.set_timeout(Duration::from_millis(10000)).unwrap();
+        serial.set_timeout(Duration::from_millis(600000)).unwrap();
         return Connection::new_serial(serial);
     }
     Connection::new_tcp(TcpStream::connect((params.server_ip, params.server_port)).unwrap())
