@@ -8,7 +8,7 @@ use std::{
     vec,
 };
 
-use crate::{io_sync, PacketType, SocketAdapter};
+use crate::{io_sync, Connection, PacketType, SocketAdapter};
 
 pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
     let mut buf1 = [0u8; 1];
@@ -42,7 +42,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
 
     tcpl.set_nonblocking(true).unwrap();
 
-    let mut tcp = SocketAdapter::new(tcp);
+    let mut tcp = SocketAdapter::new(Connection::new_tcp(tcp));
     tcp.set_nonblocking(true);
     let mut sockets: HashMap<u64, SocketAdapter> = HashMap::new();
     let mut id = 0;
@@ -51,7 +51,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
     loop {
         let mut did_anything = false;
 
-        if last_keep_alive_sent.elapsed().unwrap().as_secs() >= 20 {
+        if last_keep_alive_sent.elapsed().unwrap().as_secs() >= 10 {
             last_keep_alive_sent = SystemTime::now();
             tcp.write(&[PacketType::KeepAlive.ordinal() as u8]).unwrap();
         }
@@ -60,7 +60,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
         }
 
         if let Ok(new) = tcpl.accept() {
-            let mut new = SocketAdapter::new(new.0);
+            let mut new = SocketAdapter::new(Connection::new_tcp(new.0));
             new.set_nonblocking(true);
             sockets.insert((id, id += 1).0, new);
             tcp.write(&[PacketType::NewClient.ordinal() as u8]).unwrap();
@@ -99,7 +99,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
                 .unwrap();
             tcp.write(&i.to_be_bytes()).unwrap();
             if let Some(x) = sockets.remove(&i) {
-                let _ = x.internal.shutdown(Shutdown::Both);
+                let _ = x.internal.close();
             }
         }
 
@@ -123,7 +123,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
             PacketType::CloseClient => {
                 tcp.internal.read_exact(&mut buf8).unwrap();
                 if let Some(x) = sockets.remove(&u64::from_be_bytes(buf8)) {
-                    let _ = x.internal.shutdown(Shutdown::Both);
+                    let _ = x.internal.close();
                 }
             }
 

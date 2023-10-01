@@ -1,27 +1,89 @@
 use std::{
     collections::HashMap,
-    io::Read,
-    io::Write,
+    io::{Read, Write},
     net::{Shutdown, TcpStream},
     thread,
     time::{Duration, SystemTime},
     vec,
 };
 
-use crate::{io_sync, PacketType, SocketAdapter};
+use serial::SerialPort;
 
-pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sleep_delay_ms: u64) {
+use crate::{io_sync, Connection, PacketType, SocketAdapter};
+
+pub struct ClientParams<'a> {
+    pub server_ip: &'a str,
+    pub server_port: u16,
+    pub dest_ip: &'a str,
+    pub dest_port: u16,
+    pub key: &'a str,
+    pub sleep_delay_ms: u64,
+    pub modem_port: Option<&'a str>,
+    pub modem_baud: Option<u32>,
+    pub modem_init: Option<&'a str>,
+}
+
+fn connect(params: &ClientParams) -> Connection {
+    if let Some(modem_port) = params.modem_port {
+        let mut serial = serial::open(modem_port).unwrap();
+        serial
+            .configure(&serial::PortSettings {
+                baud_rate: serial::BaudRate::from_speed(
+                    params.modem_baud.unwrap_or(115200) as usize
+                ),
+                char_size: serial::CharSize::Bits8,
+                parity: serial::Parity::ParityNone,
+                stop_bits: serial::StopBits::Stop1,
+                flow_control: serial::FlowControl::FlowNone,
+            })
+            .unwrap();
+        if let Some(modem_init) = params.modem_init {
+            serial.set_timeout(Duration::from_millis(200)).unwrap();
+            for line in modem_init.lines() {
+                let line = line
+                    .replace("$IP", &params.server_ip.to_string())
+                    .replace("$PORT", &params.server_port.to_string());
+                println!("> {line}");
+                serial.write_all((line + "\r\n").as_bytes()).unwrap();
+                let mut s = Vec::new();
+                let _ = serial.read_to_end(&mut s).is_ok();
+                if !s.is_empty() {
+                    println!(
+                        "< {}",
+                        String::from_utf8(s).unwrap().replace("\n", "\n< ").trim()
+                    );
+                }
+                thread::sleep(Duration::from_millis(300));
+            }
+            serial.set_timeout(Duration::from_millis(3000)).unwrap();
+            let mut s = Vec::new();
+            let _ = serial.read_to_end(&mut s).is_ok();
+            if !s.is_empty() {
+                println!(
+                    "< {}",
+                    String::from_utf8(s).unwrap().replace("\n", "\n< ").trim()
+                );
+            }
+        }
+        serial.set_timeout(Duration::from_millis(10000)).unwrap();
+        return Connection::new_serial(serial);
+    }
+    Connection::new_tcp(TcpStream::connect((params.server_ip, params.server_port)).unwrap())
+}
+
+pub fn client(params: ClientParams) {
     let mut buf1 = [0u8; 1];
     let mut buf4 = [0u8; 4];
     let mut buf8 = [0u8; 8];
     let mut buf16 = [0u8; 16];
     let mut buf = [0; 1024];
-    let mut tcp = TcpStream::connect((ip, port)).unwrap();
+    let mut tcp = connect(&params);
     println!("Syncing...");
     tcp.write_all(&[b'R', b'P', b'F', 30]).unwrap();
     println!("Authenticating...");
-    tcp.write_all(&(key.len() as u32).to_be_bytes()).unwrap();
-    tcp.write_all(key.as_bytes()).unwrap();
+    tcp.write_all(&(params.key.len() as u32).to_be_bytes())
+        .unwrap();
+    tcp.write_all(params.key.as_bytes()).unwrap();
 
     println!("Syncing...");
     tcp.read_exact(&mut buf4).unwrap();
@@ -77,7 +139,7 @@ pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sle
                 .unwrap();
             tcp.write(&i.to_be_bytes()).unwrap();
             if let Some(x) = sockets.remove(&i) {
-                let _ = x.internal.shutdown(Shutdown::Both);
+                let _ = x.internal.close();
             }
         }
 
@@ -87,7 +149,7 @@ pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sle
             .is_none()
         {
             if !did_anything {
-                thread::sleep(Duration::from_millis(sleep_delay_ms));
+                thread::sleep(Duration::from_millis(params.sleep_delay_ms));
             }
             continue;
         }
@@ -97,7 +159,9 @@ pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sle
         tcp.set_nonblocking(false);
         match pt {
             PacketType::NewClient => {
-                let mut tcp = SocketAdapter::new(TcpStream::connect((dest_ip, dest_port)).unwrap());
+                let mut tcp = SocketAdapter::new(Connection::new_tcp(
+                    TcpStream::connect((params.dest_ip, params.dest_port)).unwrap(),
+                ));
                 tcp.set_nonblocking(true);
                 sockets.insert((id, id += 1).0, tcp);
             }
@@ -105,7 +169,7 @@ pub fn client(ip: &str, port: u16, dest_ip: &str, dest_port: u16, key: &str, sle
             PacketType::CloseClient => {
                 tcp.internal.read_exact(&mut buf8).unwrap();
                 if let Some(x) = sockets.remove(&u64::from_be_bytes(buf8)) {
-                    let _ = x.internal.shutdown(Shutdown::Both);
+                    let _ = x.internal.close();
                 }
             }
 

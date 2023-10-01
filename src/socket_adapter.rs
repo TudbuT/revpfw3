@@ -5,7 +5,7 @@ use std::{
     time::SystemTime,
 };
 
-use crate::io_sync;
+use crate::{io_sync, Connection};
 
 #[derive(Clone, Copy)]
 enum Broken {
@@ -23,7 +23,7 @@ impl From<Broken> for Error {
 }
 
 pub(crate) struct SocketAdapter {
-    pub(crate) internal: TcpStream,
+    pub(crate) internal: Connection,
     written: usize,
     to_write: usize,
     write: [u8; 65536],
@@ -34,9 +34,9 @@ pub(crate) struct SocketAdapter {
 }
 
 impl SocketAdapter {
-    pub fn new(tcp: TcpStream) -> SocketAdapter {
+    pub fn new(connection: Connection) -> SocketAdapter {
         Self {
-            internal: tcp,
+            internal: connection,
             written: 0,
             to_write: 0,
             write: [0u8; 65536],
