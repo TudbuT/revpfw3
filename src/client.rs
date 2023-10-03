@@ -67,9 +67,12 @@ fn connect(params: &ClientParams) -> Connection {
             }
         }
         serial.set_timeout(Duration::from_millis(600000)).unwrap();
-        return Connection::new_serial(serial);
+        return Connection::new_serial(serial, true);
     }
-    Connection::new_tcp(TcpStream::connect((params.server_ip, params.server_port)).unwrap())
+    Connection::new_tcp(
+        TcpStream::connect((params.server_ip, params.server_port)).unwrap(),
+        true,
+    )
 }
 
 pub fn client(params: ClientParams) {
@@ -94,6 +97,7 @@ pub fn client(params: ClientParams) {
     tcp.write_all(&[PacketType::KeepAlive.ordinal() as u8])
         .unwrap();
 
+    println!();
     println!("READY!");
 
     let mut tcp = SocketAdapter::new(tcp);
@@ -163,6 +167,7 @@ pub fn client(params: ClientParams) {
             PacketType::NewClient => {
                 let mut tcp = SocketAdapter::new(Connection::new_tcp(
                     TcpStream::connect((params.dest_ip, params.dest_port)).unwrap(),
+                    false,
                 ));
                 tcp.set_nonblocking(true);
                 sockets.insert((id, id += 1).0, tcp);

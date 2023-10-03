@@ -1,14 +1,23 @@
 use std::{
-    io::{self, ErrorKind, Read, Write},
+    io::{self, stdout, ErrorKind, Read, Write},
     net::{Shutdown, TcpStream},
     ptr::NonNull,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use serial::SerialPort;
 
 trait ReadWrite: Write + Read + 'static {}
 impl<T> ReadWrite for T where T: Write + Read + 'static {}
+
+enum PrintStatus {
+    No,
+    Yes {
+        last_print: SystemTime,
+        bytes: u128,
+        last_bytes: u128,
+    },
+}
 
 pub struct Connection {
     readwrite: Box<dyn ReadWrite>,
@@ -17,30 +26,13 @@ pub struct Connection {
     close_thunk: fn(NonNull<()>) -> io::Result<()>,
     is_nb: bool,
     is_serial: bool,
+    print_status: PrintStatus,
 }
 
 impl Write for Connection {
-    fn write_vectored(&mut self, bufs: &[io::IoSlice<'_>]) -> io::Result<usize> {
-        self.as_write().write_vectored(bufs)
-    }
-
-    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
-        self.as_write().write_all(buf)
-    }
-
-    fn write_fmt(&mut self, fmt: std::fmt::Arguments<'_>) -> io::Result<()> {
-        self.as_write().write_fmt(fmt)
-    }
-
-    fn by_ref(&mut self) -> &mut Self
-    where
-        Self: Sized,
-    {
-        self
-    }
-
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.as_write().write(buf)
+        let result = self.as_write().write(buf);
+        self.print_status_result(result)
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -50,19 +42,8 @@ impl Write for Connection {
 
 impl Read for Connection {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.as_read().read(buf)
-    }
-
-    fn read_vectored(&mut self, bufs: &mut [io::IoSliceMut<'_>]) -> io::Result<usize> {
-        self.as_read().read_vectored(bufs)
-    }
-
-    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
-        self.as_read().read_to_end(buf)
-    }
-
-    fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
-        self.as_read().read_to_string(buf)
+        let result = self.as_read().read(buf);
+        self.print_status_result(result)
     }
 
     fn read_exact(&mut self, mut buf: &mut [u8]) -> io::Result<()> {
@@ -92,7 +73,7 @@ impl Read for Connection {
 }
 
 impl Connection {
-    pub fn new_tcp(stream: TcpStream) -> Self {
+    pub fn new_tcp(stream: TcpStream, print: bool) -> Self {
         let mut stream = Box::new(stream);
         Connection {
             data: NonNull::from(stream.as_mut()).cast(),
@@ -105,9 +86,18 @@ impl Connection {
             },
             is_nb: false,
             is_serial: false,
+            print_status: if print {
+                PrintStatus::Yes {
+                    last_print: SystemTime::now(),
+                    bytes: 0,
+                    last_bytes: 0,
+                }
+            } else {
+                PrintStatus::No
+            },
         }
     }
-    pub fn new_serial<T: SerialPort + 'static>(serial: T) -> Self {
+    pub fn new_serial<T: SerialPort + 'static>(serial: T, print: bool) -> Self {
         let mut serial = Box::new(serial);
         Connection {
             data: NonNull::from(serial.as_mut()).cast(),
@@ -124,6 +114,15 @@ impl Connection {
             close_thunk: |_data| Ok(()),
             is_nb: false,
             is_serial: true,
+            print_status: if print {
+                PrintStatus::Yes {
+                    last_print: SystemTime::now(),
+                    bytes: 0,
+                    last_bytes: 0,
+                }
+            } else {
+                PrintStatus::No
+            },
         }
     }
     fn as_read(&mut self) -> &mut (dyn Read) {
@@ -132,6 +131,7 @@ impl Connection {
     fn as_write(&mut self) -> &mut (dyn Write) {
         &mut self.readwrite
     }
+    #[allow(dead_code)]
     pub fn is_nonblocking(&self) -> bool {
         self.is_nb
     }
@@ -145,5 +145,42 @@ impl Connection {
 
     pub fn is_serial(&self) -> bool {
         self.is_serial
+    }
+
+    fn print_status(&mut self, add: usize) {
+        if let &mut PrintStatus::Yes {
+            ref mut last_print,
+            ref mut bytes,
+            ref mut last_bytes,
+        } = &mut self.print_status
+        {
+            *bytes += add as u128;
+            if last_print.elapsed().unwrap().as_secs() > 0 {
+                let diff = *bytes - *last_bytes;
+                let bps = to_units(diff);
+                let total = to_units(*bytes);
+                print!("\r\x1b[KCurrent transfer speed: {bps}B/s, transferred {total}B so far.");
+                stdout().flush().unwrap();
+                *last_bytes = *bytes;
+                *last_print = SystemTime::now();
+            }
+        }
+    }
+
+    fn print_status_result(&mut self, result: io::Result<usize>) -> io::Result<usize> {
+        if let Ok(b) = result {
+            self.print_status(b)
+        }
+        result
+    }
+}
+
+fn to_units(diff: u128) -> String {
+    match diff {
+        x @ 1_000_000_000_000.. => ((x / 1_000_000_000) as f64 / 1000.0).to_string() + "G",
+        x @ 1_000_000_000.. => ((x / 1_000_000) as f64 / 1000.0).to_string() + "G",
+        x @ 1_000_000.. => ((x / 1_000) as f64 / 1000.0).to_string() + "M",
+        x @ 10_000.. => (x as f64 / 1000.0).to_string() + "K",
+        x => x.to_string(),
     }
 }

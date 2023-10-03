@@ -42,7 +42,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
 
     tcpl.set_nonblocking(true).unwrap();
 
-    let mut tcp = SocketAdapter::new(Connection::new_tcp(tcp));
+    let mut tcp = SocketAdapter::new(Connection::new_tcp(tcp, false));
     tcp.set_nonblocking(true);
     let mut sockets: HashMap<u64, SocketAdapter> = HashMap::new();
     let mut id = 0;
@@ -60,7 +60,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
         }
 
         if let Ok(new) = tcpl.accept() {
-            let mut new = SocketAdapter::new(Connection::new_tcp(new.0));
+            let mut new = SocketAdapter::new(Connection::new_tcp(new.0, false));
             new.set_nonblocking(true);
             sockets.insert((id, id += 1).0, new);
             tcp.write(&[PacketType::NewClient.ordinal() as u8]).unwrap();
