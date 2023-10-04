@@ -28,7 +28,6 @@ fn resync(tcp: &mut SocketAdapter) {
     // read all packets that are still pending.
     while let Some(Some(_x @ 1..)) = tcp.poll(&mut buf).ok() {}
     // client should now have stopped sending packets.
-    tcp.internal.set_print(true);
 }
 
 pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
@@ -180,10 +179,13 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
                 eprintln!(
                     "Client asked for a re-sync. Waiting 8 seconds, then sending resync-echo."
                 );
+                tcp.read_now(&mut buf8).unwrap();
+                id = u64::from_be_bytes(buf8).max(id);
                 tcp.write_now().unwrap();
                 thread::sleep(Duration::from_secs(8));
                 tcp.write(&[PacketType::ResyncEcho.ordinal() as u8])
                     .unwrap();
+                tcp.write(&id.to_be_bytes()).unwrap();
                 tcp.write_now().unwrap();
                 eprintln!("Resync-Echo sent. Going back to normal operation.");
                 tcp.internal.set_print(true);

@@ -76,12 +76,14 @@ fn connect(params: &ClientParams) -> Connection {
     )
 }
 
-fn resync(tcp: &mut SocketAdapter) {
+fn resync(tcp: &mut SocketAdapter, id: &mut u64) {
+    let mut buf8 = [0u8; 8];
     println!();
     eprintln!("Server version mismatch or broken connection. Re-syncing in case of the latter...");
     tcp.internal.set_print(false);
     tcp.write_now().unwrap();
     tcp.write(&[PacketType::Resync.ordinal() as u8]).unwrap();
+    tcp.write(&id.to_be_bytes()).unwrap();
     tcp.write_now().unwrap();
     eprintln!(
         "Sent resync packet. Server should now wait 8 seconds and then send a resync-echo packet."
@@ -98,6 +100,8 @@ fn resync(tcp: &mut SocketAdapter) {
     eprintln!("Trying to receive the resync echo...");
     tcp.read_now(&mut buf).unwrap();
     if buf[0] as i8 == PacketType::ResyncEcho.ordinal() {
+        tcp.read_now(&mut buf8).unwrap();
+        *id = u64::from_be_bytes(buf8);
         eprintln!("Successfully resynced. RevPFW3 can continue.");
     } else {
         eprintln!("Resync was not successful. Stopping.");
@@ -189,7 +193,7 @@ pub fn client(params: ClientParams) {
         }
 
         let Some(pt) = PacketType::from_ordinal(buf1[0] as i8) else {
-            resync(&mut tcp);
+            resync(&mut tcp, &mut id);
             continue;
         };
         match pt {
@@ -225,7 +229,7 @@ pub fn client(params: ClientParams) {
                 }
             }
 
-            PacketType::ServerData => resync(&mut tcp),
+            PacketType::ServerData => resync(&mut tcp, &mut id),
 
             PacketType::ClientExceededBuffer => {
                 tcp.read_now(&mut buf8).unwrap();
@@ -244,11 +248,11 @@ pub fn client(params: ClientParams) {
                 tcp.internal.set_print(false);
                 eprintln!("Server asked for re-sync. Waiting 8 seconds, then initiating resync.");
                 thread::sleep(Duration::from_secs(8));
-                resync(&mut tcp);
+                resync(&mut tcp, &mut id);
             }
 
             // this one shouldnt happen.
-            PacketType::ResyncEcho => resync(&mut tcp),
+            PacketType::ResyncEcho => resync(&mut tcp, &mut id),
         }
     }
 }
