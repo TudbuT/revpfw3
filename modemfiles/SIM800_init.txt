@@ -2,20 +2,6 @@
 AT
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 AT+CFUN?
 AT+CPIN?
 AT+CIPMODE=1
@@ -25,4 +11,5 @@ AT+CIICR
 
 
 AT+CIFSR
+AT+CIPCLOSE=0
 AT+CIPSTART=TCP,"$IP",$PORT
