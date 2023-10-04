@@ -75,6 +75,12 @@ impl Read for Connection {
 
 impl Connection {
     pub fn new_tcp(stream: TcpStream, print: bool) -> Self {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(20)))
+            .unwrap();
+        stream
+            .set_write_timeout(Some(Duration::from_secs(20)))
+            .unwrap();
         let mut stream = Box::new(stream);
         Connection {
             data: NonNull::from(stream.as_mut()).cast(),
@@ -99,7 +105,8 @@ impl Connection {
             },
         }
     }
-    pub fn new_serial<T: SerialPort + 'static>(serial: T, print: bool) -> Self {
+    pub fn new_serial<T: SerialPort + 'static>(mut serial: T, print: bool) -> Self {
+        serial.set_timeout(Duration::from_secs(20)).unwrap();
         let mut serial = Box::new(serial);
         Connection {
             data: NonNull::from(serial.as_mut()).cast(),
@@ -107,7 +114,7 @@ impl Connection {
             set_nonblocking_thunk: |data, nb| unsafe {
                 data.cast::<T>()
                     .as_mut()
-                    .set_timeout(Duration::from_millis(if nb { 0 } else { 600000 }))
+                    .set_timeout(Duration::from_secs(if nb { 0 } else { 20 }))
                     .map_err(|_| {
                         io::Error::new(io::ErrorKind::ConnectionAborted, "serial port went down")
                     })

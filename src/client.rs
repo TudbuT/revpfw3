@@ -67,7 +67,7 @@ fn connect(params: &ClientParams) -> Connection {
                 );
             }
         }
-        serial.set_timeout(Duration::from_millis(600000)).unwrap();
+        serial.set_timeout(Duration::from_millis(20000)).unwrap();
         return Connection::new_serial(serial, true);
     }
     Connection::new_tcp(
