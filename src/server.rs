@@ -13,6 +13,7 @@ use crate::{io_sync, Connection, PacketType, SocketAdapter};
 fn resync(tcp: &mut SocketAdapter) {
     println!();
     eprintln!("Client version mismatch or broken connection. Re-syncing in case of the latter...");
+    tcp.set_nonblocking(true);
     tcp.internal.set_print(false);
     tcp.write_now().unwrap();
     tcp.write(&[PacketType::Resync.ordinal() as u8]).unwrap();
@@ -22,11 +23,11 @@ fn resync(tcp: &mut SocketAdapter) {
     );
     let mut buf = [0; 4096];
     // read all packets that are still pending.
-    while Some(Some(4096)) == tcp.poll(&mut buf).ok() {}
+    while let Some(Some(_x @ 1..)) = tcp.poll(&mut buf).ok() {}
     // wait 5 seconds
     thread::sleep(Duration::from_secs(5));
     // read all packets that are still pending.
-    while Some(Some(4096)) == tcp.poll(&mut buf).ok() {}
+    while let Some(Some(_x @ 1..)) = tcp.poll(&mut buf).ok() {}
     // server should now have stopped sending packets. waiting 5 more seconds so the client has time to
     // send the resync packet.
     thread::sleep(Duration::from_secs(5));
@@ -143,7 +144,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
         };
         tcp.set_nonblocking(false);
         match pt {
-            PacketType::NewClient => unreachable!(),
+            PacketType::NewClient => resync(&mut tcp),
 
             PacketType::CloseClient => {
                 tcp.internal.read_exact(&mut buf8).unwrap();
