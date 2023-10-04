@@ -20,7 +20,6 @@ fn resync(tcp: &mut SocketAdapter) {
     eprintln!(
         "Sent resync packet. Client should now wait 8 seconds and then send a resync packet back, initiating a normal re-sync."
     );
-    tcp.set_nonblocking(true);
     let mut buf = [0; 4096];
     // read all packets that are still pending.
     while Some(Some(4096)) == tcp.poll(&mut buf).ok() {}
@@ -31,7 +30,6 @@ fn resync(tcp: &mut SocketAdapter) {
     // server should now have stopped sending packets. waiting 5 more seconds so the client has time to
     // send the resync packet.
     thread::sleep(Duration::from_secs(5));
-    tcp.set_nonblocking(true);
     tcp.internal.set_print(true);
 }
 
@@ -67,13 +65,13 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
 
     tcpl.set_nonblocking(true).unwrap();
 
-    let mut tcp = SocketAdapter::new(Connection::new_tcp(tcp, false));
-    tcp.set_nonblocking(true);
+    let mut tcp = SocketAdapter::new(Connection::new_tcp(tcp, true));
     let mut sockets: HashMap<u64, SocketAdapter> = HashMap::new();
     let mut id = 0;
     let mut last_keep_alive_sent = SystemTime::now();
     let mut last_keep_alive = SystemTime::now();
     loop {
+        tcp.set_nonblocking(true);
         let mut did_anything = false;
 
         if last_keep_alive_sent.elapsed().unwrap().as_secs() >= 10 {

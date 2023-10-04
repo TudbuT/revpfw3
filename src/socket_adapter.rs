@@ -104,7 +104,11 @@ impl SocketAdapter {
             self.internal.set_nonblocking(self.is_nonblocking)?;
             r
         } {
-            Ok(()) => Ok(()),
+            Ok(()) => {
+                self.written = 0;
+                self.to_write = 0;
+                Ok(())
+            }
             Err(x) => {
                 self.broken = Some(Broken::DirectErr(x.kind(), "io error"));
                 Err(x)

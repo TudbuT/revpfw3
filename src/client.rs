@@ -107,7 +107,6 @@ fn resync(tcp: &mut SocketAdapter) {
         eprintln!("Resync was not successful. Stopping.");
         panic!("broken connection or server version mismatch.");
     }
-    tcp.set_nonblocking(true);
     tcp.internal.set_print(true);
 }
 
@@ -138,11 +137,11 @@ pub fn client(params: ClientParams) {
     println!("READY!");
 
     let mut tcp = SocketAdapter::new(tcp);
-    tcp.set_nonblocking(true);
     let mut sockets: HashMap<u64, SocketAdapter> = HashMap::new();
     let mut id = 0;
     let mut last_keep_alive = SystemTime::now();
     loop {
+        tcp.set_nonblocking(true);
         thread::sleep(Duration::from_millis(params.rate_limit_sleep));
         let mut did_anything = false;
 
