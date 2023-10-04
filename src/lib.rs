@@ -1,15 +1,15 @@
 mod client;
+mod connection;
 mod packet;
 mod server;
-mod server_connection;
 mod socket_adapter;
 
 use std::io::{Error, ErrorKind};
 
 pub use client::*;
+pub(crate) use connection::*;
 pub(crate) use packet::*;
 pub use server::*;
-pub(crate) use server_connection::*;
 pub(crate) use socket_adapter::*;
 
 pub(crate) fn io_sync<T>(result: Result<T, Error>) -> Result<Option<T>, Error> {

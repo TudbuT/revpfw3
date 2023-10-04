@@ -10,6 +10,31 @@ use std::{
 
 use crate::{io_sync, Connection, PacketType, SocketAdapter};
 
+fn resync(tcp: &mut SocketAdapter) {
+    println!();
+    eprintln!("Client version mismatch or broken connection. Re-syncing in case of the latter...");
+    tcp.internal.set_print(false);
+    tcp.write_now().unwrap();
+    tcp.write(&[PacketType::Resync.ordinal() as u8]).unwrap();
+    tcp.write_now().unwrap();
+    eprintln!(
+        "Sent resync packet. Client should now wait 8 seconds and then send a resync packet back, initiating a normal re-sync."
+    );
+    tcp.set_nonblocking(true);
+    let mut buf = [0; 4096];
+    // read all packets that are still pending.
+    while Some(Some(4096)) == tcp.poll(&mut buf).ok() {}
+    // wait 5 seconds
+    thread::sleep(Duration::from_secs(5));
+    // read all packets that are still pending.
+    while Some(Some(4096)) == tcp.poll(&mut buf).ok() {}
+    // server should now have stopped sending packets. waiting 5 more seconds so the client has time to
+    // send the resync packet.
+    thread::sleep(Duration::from_secs(5));
+    tcp.set_nonblocking(true);
+    tcp.internal.set_print(true);
+}
+
 pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
     let mut buf1 = [0u8; 1];
     let mut buf4 = [0u8; 4];
@@ -114,8 +139,10 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
             continue;
         }
 
-        let pt = PacketType::from_ordinal(buf1[0] as i8)
-            .expect("server/client version mismatch or broken TCP");
+        let Some(pt) = PacketType::from_ordinal(buf1[0] as i8) else {
+            resync(&mut tcp);
+            continue;
+        };
         tcp.set_nonblocking(false);
         match pt {
             PacketType::NewClient => unreachable!(),
@@ -131,7 +158,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
                 last_keep_alive = SystemTime::now();
             }
 
-            PacketType::ClientData => unreachable!(),
+            PacketType::ClientData => resync(&mut tcp),
 
             PacketType::ServerData => {
                 tcp.internal.read_exact(&mut buf8).unwrap();
@@ -156,6 +183,24 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
                     socket.punish(amount);
                 }
             }
+
+            PacketType::Resync => {
+                println!();
+                tcp.internal.set_print(false);
+                eprintln!(
+                    "Client asked for a re-sync. Waiting 8 seconds, then sending resync-echo."
+                );
+                tcp.write_now().unwrap();
+                thread::sleep(Duration::from_secs(8));
+                tcp.write(&[PacketType::ResyncEcho.ordinal() as u8])
+                    .unwrap();
+                tcp.write_now().unwrap();
+                eprintln!("Resync-Echo sent. Going back to normal operation.");
+                tcp.internal.set_print(true);
+            }
+
+            // this one can't happen, it should only come from the server
+            PacketType::ResyncEcho => resync(&mut tcp),
         }
         tcp.set_nonblocking(true);
     }

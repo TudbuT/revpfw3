@@ -8,4 +8,6 @@ pub(crate) enum PacketType {
     ClientData,
     ServerData,
     ClientExceededBuffer,
+    Resync,
+    ResyncEcho,
 }

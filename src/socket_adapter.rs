@@ -89,6 +89,29 @@ impl SocketAdapter {
         self.update()
     }
 
+    pub fn write_now(&mut self) -> Result<(), Error> {
+        if let Some(ref x) = self.broken {
+            return Err(Error::from(*x));
+        }
+        if self.to_write == 0 {
+            return Ok(());
+        }
+        match {
+            self.internal.set_nonblocking(false)?;
+            let r = self
+                .internal
+                .write_all(&self.write[self.written..self.written + self.to_write]);
+            self.internal.set_nonblocking(self.is_nonblocking)?;
+            r
+        } {
+            Ok(()) => Ok(()),
+            Err(x) => {
+                self.broken = Some(Broken::DirectErr(x.kind(), "io error"));
+                Err(x)
+            }
+        }
+    }
+
     pub fn update(&mut self) -> Result<(), Error> {
         if Some(SystemTime::UNIX_EPOCH.elapsed().unwrap().as_micros()) < self.ignore_until {
             return Ok(());

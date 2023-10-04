@@ -26,6 +26,7 @@ pub struct Connection {
     close_thunk: fn(NonNull<()>) -> io::Result<()>,
     is_nb: bool,
     is_serial: bool,
+    print: bool,
     print_status: PrintStatus,
 }
 
@@ -86,6 +87,7 @@ impl Connection {
             },
             is_nb: false,
             is_serial: false,
+            print: true,
             print_status: if print {
                 PrintStatus::Yes {
                     last_print: SystemTime::now(),
@@ -114,6 +116,7 @@ impl Connection {
             close_thunk: |_data| Ok(()),
             is_nb: false,
             is_serial: true,
+            print: true,
             print_status: if print {
                 PrintStatus::Yes {
                     last_print: SystemTime::now(),
@@ -147,6 +150,10 @@ impl Connection {
         self.is_serial
     }
 
+    pub fn set_print(&mut self, print: bool) {
+        self.print = print;
+    }
+
     fn print_status(&mut self, add: usize) {
         if let &mut PrintStatus::Yes {
             ref mut last_print,
@@ -159,8 +166,12 @@ impl Connection {
                 let diff = *bytes - *last_bytes;
                 let bps = to_units(diff);
                 let total = to_units(*bytes);
-                print!("\r\x1b[KCurrent transfer speed: {bps}B/s, transferred {total}B so far.");
-                stdout().flush().unwrap();
+                if self.print {
+                    print!(
+                        "\r\x1b[KCurrent transfer speed: {bps}B/s, transferred {total}B so far."
+                    );
+                    stdout().flush().unwrap();
+                }
                 *last_bytes = *bytes;
                 *last_print = SystemTime::now();
             }

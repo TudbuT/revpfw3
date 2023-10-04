@@ -1,3 +1,4 @@
+use core::panic;
 use std::{
     collections::HashMap,
     io::{Read, Write},
@@ -75,6 +76,41 @@ fn connect(params: &ClientParams) -> Connection {
     )
 }
 
+fn resync(tcp: &mut SocketAdapter) {
+    println!();
+    eprintln!("Server version mismatch or broken connection. Re-syncing in case of the latter...");
+    tcp.internal.set_print(false);
+    tcp.write_now().unwrap();
+    tcp.write(&[PacketType::Resync.ordinal() as u8]).unwrap();
+    tcp.write_now().unwrap();
+    eprintln!(
+        "Sent resync packet. Server should now wait 8 seconds and then send a resync-echo packet."
+    );
+    tcp.set_nonblocking(true);
+    let mut buf = [0; 4096];
+    // read all packets that are still pending.
+    while Some(Some(4096)) == tcp.poll(&mut buf).ok() {}
+    // wait 5 seconds
+    thread::sleep(Duration::from_secs(5));
+    // read all packets that are still pending.
+    while Some(Some(4096)) == tcp.poll(&mut buf).ok() {}
+    // server should now have stopped sending packets. waiting 5 more seconds so the server has time to
+    // send the resync packet.
+    thread::sleep(Duration::from_secs(5));
+    let mut buf = [0];
+    eprintln!("Trying to receive the resync echo...");
+    tcp.set_nonblocking(false);
+    tcp.poll(&mut buf).unwrap();
+    if buf[0] as i8 == PacketType::ResyncEcho.ordinal() {
+        eprintln!("Successfully resynced. RevPFW3 can continue.");
+    } else {
+        eprintln!("Resync was not successful. Stopping.");
+        panic!("broken connection or server version mismatch.");
+    }
+    tcp.set_nonblocking(true);
+    tcp.internal.set_print(true);
+}
+
 pub fn client(params: ClientParams) {
     let mut buf1 = [0u8; 1];
     let mut buf4 = [0u8; 4];
@@ -82,6 +118,7 @@ pub fn client(params: ClientParams) {
     let mut buf16 = [0u8; 16];
     let mut buf = [0; 1024];
     let mut tcp = connect(&params);
+    tcp.set_print(false);
     println!("Syncing...");
     tcp.write_all(&[b'R', b'P', b'F', 30]).unwrap();
     println!("Authenticating...");
@@ -96,8 +133,8 @@ pub fn client(params: ClientParams) {
     }
     tcp.write_all(&[PacketType::KeepAlive.ordinal() as u8])
         .unwrap();
+    tcp.set_print(true);
 
-    println!();
     println!("READY!");
 
     let mut tcp = SocketAdapter::new(tcp);
@@ -160,8 +197,10 @@ pub fn client(params: ClientParams) {
             continue;
         }
 
-        let pt = PacketType::from_ordinal(buf1[0] as i8)
-            .expect("server/client version mismatch or broken TCP");
+        let Some(pt) = PacketType::from_ordinal(buf1[0] as i8) else {
+            resync(&mut tcp);
+            continue;
+        };
         tcp.set_nonblocking(false);
         match pt {
             PacketType::NewClient => {
@@ -197,7 +236,7 @@ pub fn client(params: ClientParams) {
                 }
             }
 
-            PacketType::ServerData => unreachable!(),
+            PacketType::ServerData => resync(&mut tcp),
 
             PacketType::ClientExceededBuffer => {
                 tcp.internal.read_exact(&mut buf8).unwrap();
@@ -210,6 +249,17 @@ pub fn client(params: ClientParams) {
                     socket.punish(amount);
                 }
             }
+
+            PacketType::Resync => {
+                println!();
+                tcp.internal.set_print(false);
+                eprintln!("Server asked for re-sync. Waiting 8 seconds, then initiating resync.");
+                thread::sleep(Duration::from_secs(8));
+                resync(&mut tcp);
+            }
+
+            // this one shouldnt happen.
+            PacketType::ResyncEcho => resync(&mut tcp),
         }
         tcp.set_nonblocking(true);
     }
