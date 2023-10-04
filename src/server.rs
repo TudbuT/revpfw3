@@ -8,12 +8,11 @@ use std::{
     vec,
 };
 
-use crate::{io_sync, Connection, PacketType, SocketAdapter};
+use crate::{Connection, PacketType, SocketAdapter};
 
 fn resync(tcp: &mut SocketAdapter) {
     println!();
     eprintln!("Client version mismatch or broken connection. Re-syncing in case of the latter...");
-    tcp.set_nonblocking(true);
     tcp.internal.set_print(false);
     tcp.write_now().unwrap();
     tcp.write(&[PacketType::Resync.ordinal() as u8]).unwrap();
@@ -28,9 +27,7 @@ fn resync(tcp: &mut SocketAdapter) {
     thread::sleep(Duration::from_secs(5));
     // read all packets that are still pending.
     while let Some(Some(_x @ 1..)) = tcp.poll(&mut buf).ok() {}
-    // server should now have stopped sending packets. waiting 5 more seconds so the client has time to
-    // send the resync packet.
-    thread::sleep(Duration::from_secs(5));
+    // client should now have stopped sending packets.
     tcp.internal.set_print(true);
 }
 
@@ -72,7 +69,6 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
     let mut last_keep_alive_sent = SystemTime::now();
     let mut last_keep_alive = SystemTime::now();
     loop {
-        tcp.set_nonblocking(true);
         let mut did_anything = false;
 
         if last_keep_alive_sent.elapsed().unwrap().as_secs() >= 10 {
@@ -84,8 +80,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
         }
 
         if let Ok(new) = tcpl.accept() {
-            let mut new = SocketAdapter::new(Connection::new_tcp(new.0, false));
-            new.set_nonblocking(true);
+            let new = SocketAdapter::new(Connection::new_tcp(new.0, false));
             sockets.insert((id, id += 1).0, new);
             tcp.write(&[PacketType::NewClient.ordinal() as u8]).unwrap();
             did_anything = true;
@@ -128,10 +123,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
         }
 
         tcp.update().unwrap();
-        if io_sync(tcp.internal.read_exact(&mut buf1))
-            .unwrap()
-            .is_none()
-        {
+        if tcp.poll_exact(&mut buf1).unwrap().is_none() {
             if !did_anything {
                 thread::sleep(Duration::from_millis(sleep_delay_ms));
             }
@@ -142,12 +134,11 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
             resync(&mut tcp);
             continue;
         };
-        tcp.set_nonblocking(false);
         match pt {
             PacketType::NewClient => resync(&mut tcp),
 
             PacketType::CloseClient => {
-                tcp.internal.read_exact(&mut buf8).unwrap();
+                tcp.read_now(&mut buf8).unwrap();
                 if let Some(x) = sockets.remove(&u64::from_be_bytes(buf8)) {
                     let _ = x.internal.close();
                 }
@@ -160,11 +151,11 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
             PacketType::ClientData => resync(&mut tcp),
 
             PacketType::ServerData => {
-                tcp.internal.read_exact(&mut buf8).unwrap();
+                tcp.read_now(&mut buf8).unwrap();
                 let idx = u64::from_be_bytes(buf8);
-                tcp.internal.read_exact(&mut buf4).unwrap();
+                tcp.read_now(&mut buf4).unwrap();
                 let len = u32::from_be_bytes(buf4) as usize;
-                tcp.internal.read_exact(&mut buf[..len]).unwrap();
+                tcp.read_now(&mut buf[..len]).unwrap();
 
                 if let Some(socket) = sockets.get_mut(&idx) {
                     let _ = socket.write_later(&buf[..len]);
@@ -172,9 +163,9 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
             }
 
             PacketType::ClientExceededBuffer => {
-                tcp.internal.read_exact(&mut buf8).unwrap();
+                tcp.read_now(&mut buf8).unwrap();
                 let idx = u64::from_be_bytes(buf8);
-                tcp.internal.read_exact(&mut buf16).unwrap();
+                tcp.read_now(&mut buf16).unwrap();
                 let amount = u128::from_be_bytes(buf16);
 
                 // a single connection doesn't need overuse-penalties
@@ -201,6 +192,5 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
             // this one can't happen, it should only come from the server
             PacketType::ResyncEcho => resync(&mut tcp),
         }
-        tcp.set_nonblocking(true);
     }
 }

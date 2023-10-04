@@ -8,14 +8,12 @@ use crate::{io_sync, Connection};
 
 #[derive(Clone, Copy)]
 enum Broken {
-    OsErr(i32),
     DirectErr(ErrorKind, &'static str),
 }
 
 impl From<Broken> for Error {
     fn from(value: Broken) -> Self {
         match value {
-            Broken::OsErr(x) => Error::from_raw_os_error(x),
             Broken::DirectErr(x, s) => Error::new(x, s),
         }
     }
@@ -28,7 +26,6 @@ pub(crate) struct SocketAdapter {
     write: [u8; 65536],
     broken: Option<Broken>,
     accumulated_delay: u128,
-    is_nonblocking: bool,
     ignore_until: Option<u128>,
 }
 
@@ -41,17 +38,8 @@ impl SocketAdapter {
             write: [0u8; 65536],
             broken: None,
             accumulated_delay: 0,
-            is_nonblocking: false,
             ignore_until: None,
         }
-    }
-
-    pub fn set_nonblocking(&mut self, nonblocking: bool) {
-        if let Err(x) = self.internal.set_nonblocking(nonblocking) {
-            self.broken = Some(Broken::OsErr(x.raw_os_error().unwrap()));
-            return;
-        }
-        self.is_nonblocking = nonblocking;
     }
 
     pub fn write_later(&mut self, buf: &[u8]) -> Result<(), Error> {
@@ -72,7 +60,6 @@ impl SocketAdapter {
             self.internal.set_nonblocking(false)?;
             self.internal
                 .write_all(&self.write[self.written..self.written + self.to_write])?;
-            self.internal.set_nonblocking(self.is_nonblocking)?;
             self.written = 0;
             self.to_write = buf.len();
             self.write[..buf.len()].copy_from_slice(buf);
@@ -101,7 +88,6 @@ impl SocketAdapter {
             let r = self
                 .internal
                 .write_all(&self.write[self.written..self.written + self.to_write]);
-            self.internal.set_nonblocking(self.is_nonblocking)?;
             r
         } {
             Ok(()) => {
@@ -131,7 +117,6 @@ impl SocketAdapter {
             let r = self
                 .internal
                 .write(&self.write[self.written..self.written + self.to_write]);
-            self.internal.set_nonblocking(self.is_nonblocking)?;
             r
         } {
             Ok(x) => {
@@ -150,11 +135,30 @@ impl SocketAdapter {
         }
     }
 
+    pub fn read_now(&mut self, buf: &mut [u8]) -> Result<Option<()>, Error> {
+        if Some(SystemTime::UNIX_EPOCH.elapsed().unwrap().as_micros()) < self.ignore_until {
+            return Ok(None);
+        }
+        self.update()?;
+        self.internal.set_nonblocking(false)?;
+        io_sync(self.internal.read_exact(buf))
+    }
+
+    pub fn poll_exact(&mut self, buf: &mut [u8]) -> Result<Option<()>, Error> {
+        if Some(SystemTime::UNIX_EPOCH.elapsed().unwrap().as_micros()) < self.ignore_until {
+            return Ok(None);
+        }
+        self.update()?;
+        self.internal.set_nonblocking(true)?;
+        io_sync(self.internal.read_exact(buf))
+    }
+
     pub fn poll(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Error> {
         if Some(SystemTime::UNIX_EPOCH.elapsed().unwrap().as_micros()) < self.ignore_until {
             return Ok(None);
         }
         self.update()?;
+        self.internal.set_nonblocking(true)?;
         io_sync(self.internal.read(buf))
     }
 

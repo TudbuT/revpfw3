@@ -48,17 +48,18 @@ impl Read for Connection {
     }
 
     fn read_exact(&mut self, mut buf: &mut [u8]) -> io::Result<()> {
+        let len = buf.len();
         while !buf.is_empty() {
             match self.read(buf) {
-                Ok(0) if self.is_nb => {
+                Ok(0) if self.is_nb && buf.len() == len => {
                     return Err(io::Error::new(ErrorKind::WouldBlock, "would block"))
                 }
-                Ok(0) => (),
+                Ok(0) => break,
                 Ok(n) => {
                     let tmp = buf;
                     buf = &mut tmp[n..];
                 }
-                Err(ref e) if e.kind() == ErrorKind::Interrupted => (),
+                Err(ref e) if e.kind() == ErrorKind::Interrupted => {}
                 Err(e) => return Err(e),
             }
         }
