@@ -57,7 +57,7 @@ fn connect(params: &ClientParams) -> Connection {
                 }
                 thread::sleep(Duration::from_millis(300));
             }
-            serial.set_timeout(Duration::from_millis(3000)).unwrap();
+            serial.set_timeout(Duration::from_millis(5000)).unwrap();
             let mut s = Vec::new();
             let _ = serial.read_to_end(&mut s).is_ok();
             if !s.is_empty() {
