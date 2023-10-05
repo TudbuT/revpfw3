@@ -5,7 +5,7 @@ This tool bypasses port restrictions of your router using some not-very-powerful
 server (a cheap 1€ vserver will suffice.)
 
 NEW: Modem support! RevPFW3 can now interact with modems using AT commands. A demo
-is included for the SIM800L GSM modem.
+is included for some simcom modems.
 
 ---
 
