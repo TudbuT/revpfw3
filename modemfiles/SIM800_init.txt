@@ -10,6 +10,8 @@ AT+CSTT="internet.telekom","",""
 AT+CIICR
 
 
+
+
 AT+CIFSR
 AT+CIPCLOSE=0
 AT+CIPSTART=TCP,"$IP",$PORT

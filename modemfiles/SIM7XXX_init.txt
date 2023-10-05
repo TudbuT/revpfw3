@@ -2,26 +2,13 @@
 AT
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-AT
-
 AT+CIPMODE=1
 AT+CGDCONT=1,IP,"internet.telekom"
 AT+NETOPEN
 
+
+
+
 AT+IPADDR
+AT+CIPCLOSE=0
 AT+CIPOPEN=0,"TCP","$IP",$PORT
