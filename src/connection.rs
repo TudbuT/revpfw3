@@ -147,6 +147,9 @@ impl Connection {
         self.is_nb
     }
     pub fn set_nonblocking(&mut self, nonblocking: bool) -> io::Result<()> {
+        if self.is_nb == nonblocking {
+            return Ok(());
+        }
         self.is_nb = nonblocking;
         (self.set_nonblocking_thunk)(self.data, nonblocking)
     }
