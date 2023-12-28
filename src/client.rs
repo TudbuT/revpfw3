@@ -1,6 +1,7 @@
 use core::panic;
 use std::{
     collections::HashMap,
+    fs,
     io::{Read, Write},
     net::TcpStream,
     thread,
@@ -41,7 +42,10 @@ fn connect(params: &ClientParams) -> Connection {
             .unwrap();
         if let Some(modem_init) = params.modem_init {
             serial.set_timeout(Duration::from_millis(200)).unwrap();
-            for line in modem_init.lines() {
+            for line in fs::read_to_string(modem_init)
+                .expect("invalid modem init file")
+                .lines()
+            {
                 let line = line
                     .replace("$IP", &params.server_ip.to_string())
                     .replace("$PORT", &params.server_port.to_string());

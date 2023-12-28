@@ -31,5 +31,5 @@ fn main() {
     }
     eprintln!("Usage: \n\
                \x20 revpfw3 server <port> <key> [<poll delay>]\n\
-               \x20 revpfw3 client <server ip> <server port> <destination ip> <destination port> <key> [<poll delay> [<modem port> <modem baud> <modem init>]]");
+               \x20 revpfw3 client <server ip> <server port> <destination ip> <destination port> <key> [<poll delay> [<modem port> <modem baud> <modem init file>]]");
 }
