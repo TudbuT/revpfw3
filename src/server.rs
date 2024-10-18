@@ -36,7 +36,7 @@ pub fn server(port: u16, key: &str, sleep_delay_ms: u64) {
     let mut buf8 = [0u8; 8];
     let mut buf16 = [0u8; 16];
     let mut buf = [0; 1024];
-    let tcpl = TcpListener::bind(("0.0.0.0", port)).unwrap();
+    let tcpl = TcpListener::bind(("::1", port)).unwrap();
     let mut tcp = loop {
         let Ok(mut tcp) = tcpl.accept() else { continue };
         let Ok(()) = tcp.0.read_exact(&mut buf4) else {
